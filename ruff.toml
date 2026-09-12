@@ -1,0 +1,5 @@
+line-length = 150
+target-version = "py310"
+lint.select = ["E", "F", "W"]
+# one line per thought, not one line per import. `l` is a line. `n` is a node
+lint.ignore = ["E701", "E702", "E731", "E741", "E401", "E402", "W605"]
