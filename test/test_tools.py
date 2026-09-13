@@ -20,6 +20,12 @@ class TestParse(unittest.TestCase):
     self.assertEqual([Op.READ], [n.op for n in parse("sure! let me look.\n\nREAD a.py\n\nhope that helps")])
   def test_fences_are_ignored(self):
     self.assertEqual([Op.WRITE], [n.op for n in parse("```\nWRITE a.py\n<<<\nx\n>>>\n```")])
+  def test_run_with_a_body(self):
+    self.assertEqual("python3 -\nimport sys\nprint(1)", self.one("RUN python3 -\n<<<\nimport sys\nprint(1)\n>>>").arg)
+  def test_run_without_a_body_is_one_line(self):
+    self.assertEqual([Op.RUN, Op.RUN], [n.op for n in parse("RUN ls\nRUN pwd")])
+  def test_a_write_with_no_fence_is_dropped_not_greedy(self):
+    self.assertEqual([Op.RUN], [n.op for n in parse("WRITE a.py\nRUN pytest")])
   def test_order_is_kept(self):
     self.assertEqual([Op.WRITE, Op.RUN, Op.DONE], [n.op for n in parse("WRITE a.py\n<<<\nx\n>>>\nRUN pytest\nDONE ok")])
 

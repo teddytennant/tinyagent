@@ -19,7 +19,7 @@ class TestRun(unittest.TestCase):
     self.old, self.d = os.getcwd(), tempfile.mkdtemp()
     os.chdir(self.d); subprocess.run(["git", "init", "-q"], check=True)
     os.environ.update(MODEL="mock", TINYAGENT_DB=os.path.join(self.d, "db"))
-    for k in ("REPLAY", "BEAM", "VERIFY", "STEPS"): os.environ.pop(k, None)
+    for k in ("REPLAY", "BEAM", "VERIFY", "STEPS", "MAXCMD"): os.environ.pop(k, None)
   def tearDown(self): os.chdir(self.old)
   def go(self, *turns):
     os.environ["MOCK"] = "|".join(t.replace("\n", "\\n") for t in turns)
@@ -28,11 +28,11 @@ class TestRun(unittest.TestCase):
   def test_write_run_done(self):
     root, st = self.go('WRITE hi.py\n<<<\nprint("hi")\n>>>\nRUN python3 hi.py', "DONE it prints")
     self.assertEqual((Op.DONE, "it prints"), (root.op, root.arg))
-    self.assertEqual((2, 2), (st.samples, st.tools))
+    self.assertEqual((2, 3), (st.samples, st.tools))   # the seeded file list counts
     self.assertEqual('print("hi")\n', open("hi.py").read())
   def test_a_failing_command_comes_back_as_a_failure(self):
     root, st = self.go("RUN exit 7", "DONE whatever")
-    self.assertEqual(1, st.tools)
+    self.assertEqual(2, st.tools)
     self.assertEqual("whatever", root.arg)
   def test_three_identical_failures_stop_the_run(self):
     root, st = self.go("RUN exit 7", "RUN exit 7", "RUN exit 7", "DONE never gets here")
@@ -48,7 +48,18 @@ class TestRun(unittest.TestCase):
     os.environ["VERIFY"] = "echo the-failing-test; exit 1"
     try: root, st = self.go("DONE looked at it")
     finally: del os.environ["VERIFY"]
+    self.assertEqual((1, 2), (st.samples, st.tools))
+  def test_it_opens_on_the_file_list(self):
+    root, st = self.go("DONE saw the tree")
     self.assertEqual((1, 1), (st.samples, st.tools))
+  def test_at_most_eight_commands_a_turn(self):
+    os.environ["MAXCMD"] = "3"
+    try: root, st = self.go("\n".join(f"RUN echo {i}" for i in range(9)), "DONE enough")
+    finally: del os.environ["MAXCMD"]
+    self.assertEqual(4, st.tools)   # the file list, then three of the nine
+  def test_a_multiline_command_runs_whole(self):
+    root, st = self.go('RUN python3 -\n<<<\nprint("from stdin")\n>>>', "DONE ran it")
+    self.assertEqual(2, st.samples)
   def test_replay_costs_nothing(self):
     self.go("RUN echo one", "DONE first")
     os.environ["REPLAY"], os.environ["MOCK"] = "1", "DONE this script is not used"

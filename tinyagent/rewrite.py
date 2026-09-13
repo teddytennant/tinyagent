@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Any, Callable, Optional
-from tinyagent.graph import N, Op, TOOL, MAXOUT
+from tinyagent.graph import N, Op, TOOL, MAXOUT, getenv
 
 class Pat:
   __slots__ = ("op", "src", "arg", "name")
@@ -66,6 +66,14 @@ def finish(x:N) -> Optional[N]:
   if any(n.op in TOOL for n in x.src): return None
   return next((n for n in x.src if n.op is Op.DONE), None)
 
+def cap(x:N) -> Optional[N]:
+  # a lost model emits forty commands in one turn and every RUN in that list is a barrier, so it runs
+  # them one at a time until something times out. it gets eight, then it has to look at the output
+  tools = [n for n in x.src if n.op in TOOL]
+  if len(tools) <= (k:=getenv("MAXCMD", 8)): return None
+  drop = set(tools[k:])
+  return N(Op.SPEC, tuple(n for n in x.src if n not in drop), x.arg)
+
 def trunc(x:N) -> Optional[N]:
   s = x.arg if x.op is Op.TEXT else x.arg[1]
   if len(s) <= MAXOUT: return None
@@ -79,5 +87,6 @@ rules = PatternMatcher([
   (Pat(Op.SPEC, name="x"), finish),
   (Pat(Op.SPEC, name="x"), giveup),
   (Pat(Op.SPEC, name="x"), dce),
+  (Pat(Op.SPEC, name="x"), cap),
   (Pat((Op.TEXT, Op.FAIL), name="x"), trunc),
 ])

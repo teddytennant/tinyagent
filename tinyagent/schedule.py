@@ -31,7 +31,10 @@ def run(spec:str, st:Stats|None=None) -> tuple[N, Stats]:
   # VERIFY is the first thing that runs, not the last. the model opens on the failure it has to fix
   # instead of spending a turn and 40k tokens finding out what the command is called
   dev, st = device(), st or Stats()
-  seed = (N(Op.RUN, (), v),) if (v:=os.getenv("VERIFY")) else ()
+  # it opens on the file list and the failure, the way you would. a model that has to spend a turn
+  # working out what the repo even contains spends the next one guessing at filenames
+  seed = (N(Op.RUN, (), "git ls-files | head -200"),)
+  if (v:=os.getenv("VERIFY")): seed += (N(Op.RUN, (), v),)
   rec, root = Recorder(spec, model()), N(Op.SPEC, seed, spec)
   for _ in range(steps:=getenv("STEPS", 24)):
     root = graph_rewrite(root, rules)

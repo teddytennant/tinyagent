@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os, shlex, subprocess
+from typing import Optional
 from tinyagent.graph import N, Op, DEBUG, getenv
 
 TIMEOUT = getenv("TIMEOUT", 180)
@@ -10,23 +11,31 @@ def parse(txt:str) -> list[N]:
   out, lines, i = [], [l for l in txt.split("\n") if l.strip() != "```"], 0
   while i < len(lines):
     l, i = lines[i].strip(), i+1
-    if not l or " " not in l and l not in ("DONE",): continue
+    if not l or (" " not in l and l != "DONE"): continue
     verb, _, rest = l.partition(" ")
     if verb == "READ" and rest: out.append(N(Op.READ, (), rest.strip()))
     elif verb == "GREP" and rest:
       pat, _, glob = rest.rpartition(" ")
       if "*" not in glob: pat, glob = rest, "*"   # models forget the glob. a trailing word with no star is pattern
       out.append(N(Op.GREP, (), (pat.strip(), glob.strip())))
-    elif verb == "RUN" and rest: out.append(N(Op.RUN, (), rest.strip()))
     elif verb == "DONE": out.append(N(Op.DONE, (), rest.strip() or "done"))
+    elif verb == "RUN" and rest:
+      # a command that needs newlines goes in a body, else a heredoc gets cut at its first line and
+      # you run `python3 -c "` three times before the give-up rule saves you
+      body, i = fence(lines, i)
+      out.append(N(Op.RUN, (), rest.strip() + ("\n" + body if body else "")))
     elif verb == "WRITE" and rest:
-      body:list[str] = []
-      while i < len(lines) and lines[i].strip() != "<<<": i += 1
-      i += 1
-      while i < len(lines) and lines[i].strip() != ">>>": body.append(lines[i]); i += 1
-      i += 1
-      out.append(N(Op.WRITE, (), (rest.strip(), "\n".join(body) + "\n")))
+      body, i = fence(lines, i)
+      if body is not None: out.append(N(Op.WRITE, (), (rest.strip(), body + "\n")))
   return out
+
+def fence(lines:list[str], i:int) -> tuple[Optional[str], int]:
+  # a body is the next line, or nothing. scanning ahead for a <<< the model never wrote eats the rest
+  # of the turn, which is how one forgotten fence turns into one command
+  if i >= len(lines) or lines[i].strip() != "<<<": return None, i
+  out, i = [], i+1
+  while i < len(lines) and lines[i].strip() != ">>>": out.append(lines[i]); i += 1
+  return "\n".join(out), i+1
 
 def ok(n:N, s:str) -> N: return N(Op.TEXT, (n,), s)
 def bad(n:N, rc:int, s:str) -> N: return N(Op.FAIL, (n,), (rc, s))

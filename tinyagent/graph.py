@@ -59,7 +59,9 @@ the entire new contents of the file
 >>>
 DONE <one line, why you are done>
 
-one command per line. you get the output of every command back before your next turn.
+one command per line, at most 8 a turn. a RUN or a WRITE that needs more than one line puts its
+body between <<< and >>> on the lines under it. you get the output of every command back before
+your next turn.
 you do not see your own previous replies, only what the commands printed. if a command
 failed you will see its exit code and output. do not explain, do not apologize, do not
 ask questions. if you know the answer already, WRITE it."""
